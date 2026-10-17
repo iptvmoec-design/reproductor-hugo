@@ -583,6 +583,10 @@ header .brand{flex:none}
             <input type="text" id="url" placeholder="Pega aquí la dirección de tu lista M3U" aria-label="Dirección de la lista M3U" inputmode="url">
           </label>
           <p class="hint" style="margin:.5rem 0 0">Algunos servidores no permiten leer la lista desde una página web. Si da error, descarga la lista y súbela con "Subir lista".</p>
+          <label class="fld" style="margin-top:.7rem">Puente (opcional)
+            <input type="text" id="proxyUrl" placeholder="https://tu-puente.tu-usuario.workers.dev" autocomplete="off" inputmode="url">
+          </label>
+          <p class="hint" style="margin:.3rem 0 0">Si has creado un puente, pega aquí su dirección. Sirve para poder cargar la lista por dirección y recibir las novedades.</p>
         </div>
         <div class="btns">
           <button class="main" id="load" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Cargar M3U</button>
@@ -1040,7 +1044,7 @@ header .brand{flex:none}
     if(serTried&&!force) return;
     serTried=true; serBusy=true; serErr=''; catNote();
     var ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ if(ctl) ctl.abort(); },90000);
-    function get(act){ return fetch(a.api+'&action='+act,ctl?{signal:ctl.signal}:undefined).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
+    function get(act){ return fetch(viaPx(a.api+'&action='+act),ctl?{signal:ctl.signal}:undefined).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
     Promise.all([get('get_series_categories'),get('get_series')]).then(function(r){
       clearTimeout(to);
       var cats=r[0], list=r[1];
@@ -1404,7 +1408,7 @@ header .brand{flex:none}
     try{ if(hls) hls.stopLoad(); if(ts) ts.unload(); video.pause(); }catch(e){}
     setTimeout(function(){
       if(cur!==u) return;
-      fetch(a.api).then(function(r){ return r.json(); }).then(function(j){
+      fetch(viaPx(a.api)).then(function(r){ return r.json(); }).then(function(j){
         var ui=j&&j.user_info; if(!ui||cur!==u) return;
         var act=+ui.active_cons||0, max=+ui.max_connections||0;
         if(max>0&&act>=max){
@@ -1603,9 +1607,12 @@ header .brand{flex:none}
     closeDlg(); showScreen('home');
     return true;
   }
+  /* Puente opcional (Cloudflare Worker): solo para la lista y las consultas del servidor, nunca para el vídeo */
+  function pxGet(){ try{ return (localStorage.getItem('m3u_proxy')||'').trim(); }catch(e){ return ''; } }
+  function viaPx(u){ var p=pxGet(); return (p&&/^https?:\/\//i.test(p)&&/^https?:\/\//i.test(u))?p+(p.indexOf('?')<0?'?':'&')+'url='+encodeURIComponent(u):u; }
   function download(i,u,name){
     mset('Descargando lista…');
-    return fetch(u).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+    return fetch(viaPx(u)).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
       .then(function(t){ mset('Procesando lista…'); return new Promise(function(res){ setTimeout(function(){ res(commit(i,t,u,{name:name,url:u,kind:'url',fileName:''},true)); },30); }); })
       .catch(function(e){
         mset('No se ha podido leer la lista ('+e.message+'). Lo más probable es que el servidor no permita leerla desde una página web. Descarga la lista como archivo y súbela con "Subir lista".',true);
@@ -1832,7 +1839,7 @@ header .brand{flex:none}
   function querySub(){
     var s=curSlot(), a=acct(s), api=a&&a.api; if(!api) return;
     sset('Consultando al servidor…');
-    fetch(api).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }).then(function(j){
+    fetch(viaPx(api)).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }).then(function(j){
       var u=j&&j.user_info; if(!u) throw new Error('respuesta no válida');
       if(u.created_at) s.subStart=(+u.created_at)*1000;
       s.subEnd=u.exp_date?(+u.exp_date)*1000:0;
@@ -2482,6 +2489,14 @@ header .brand{flex:none}
 </script>
 <script>
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+</script>
+<script>
+(function(){
+  var i=document.getElementById('proxyUrl'); if(!i) return;
+  try{ i.value=localStorage.getItem('m3u_proxy')||''; }catch(e){}
+  function sv(){ var v=i.value.trim().replace(/\/+$/,''); try{ if(v) localStorage.setItem('m3u_proxy',v); else localStorage.removeItem('m3u_proxy'); }catch(e){} }
+  i.addEventListener('change',sv); i.addEventListener('input',sv);
+})();
 </script>
 </body>
 </html>
